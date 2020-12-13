@@ -10,9 +10,9 @@ function [costOptimals,EBOoptimals] = dynamic(EBOArray, costArray, nLRU)
     % number of each LRU. The size of the matrix (2000) is due to
     % preallocation. The first state corresponds to no LRUs.
     
-    currentStates = zeros(2000, nLRU+2);
-    currentStates(1,2) = getEBO(currentStates(1,3:end),EBOArray);
-    nCurrentStates = 1;
+    currentCases = zeros(2000, nLRU+2);
+    currentCases(1,2) = getEBO(currentCases(1,3:end),EBOArray);
+    nCurrentCases = 1;
     
     % optimalStates holds all states that have been fund to provide the
     % lowest EBO for their given cost.
@@ -21,35 +21,42 @@ function [costOptimals,EBOoptimals] = dynamic(EBOArray, costArray, nLRU)
     nOptimalStates = 0;
     
     
+    linearArray = 1:100;
+    
     while true
         
-        %% Obtain new states
+        %% Obtain confirmed optimal state
         
         % First, the state with the lowest cost is taken, as it is going to
         % be the base for the next batch of states to be considered.
-        updatedState = currentStates(1,:);
         
-        for i=1:nLRU
-            
-            % 9 new states are generated, by adding one LRU of each type.
-            % Cost and EBO of each new state is computed, and the new
-            % states are added to currentStates.
-            
-            newState = updatedState;
-            newState(2+i) = newState(2+i) + 1;
-            newState(1) = newState(3:end)*costArray;
-            newState(2) = getEBO(newState(3:end),EBOArray);
-            
-            currentStates(nCurrentStates+i,:) = newState;
+        earliestStage = min(currentCases(1:nCurrentCases,1));
+        
+        if earliestStage == 0
+            earliestStageCasesIndexes = 1;
+        else
+            earliestStageCasesIndexes = (currentCases(1:nCurrentCases,1) == earliestStage);
         end
         
         
-        %% Add state to the optimal set
+        referenceIndexes = linearArray(earliestStageCasesIndexes);
+        
+        [~, lowestEBOatEarliestStageIndex] = min(currentCases(earliestStageCasesIndexes,2));
+       
+        updatedCaseIndex = referenceIndexes(lowestEBOatEarliestStageIndex);
+        updatedCase = currentCases(updatedCaseIndex,:);
+        
+        
+        currentCases(updatedCaseIndex,:) = [];
+        
+        nCurrentCases = nCurrentCases - 1;
+        
+                %% Add state to the optimal set
         
         % If the state with the lowest cost has a cost above the budget,
         % the loop is stopped and the function exits.
         
-        if updatedState(1) >= maxBudget
+        if updatedCase(1) >= maxBudget
             break
         end
         
@@ -59,51 +66,44 @@ function [costOptimals,EBOoptimals] = dynamic(EBOArray, costArray, nLRU)
         % optimal set.
         
         nOptimalStates = nOptimalStates + 1;
-        optimalStates(nOptimalStates,:) = updatedState;
-        currentStates(1,:) = [];
+        optimalStates(nOptimalStates,:) = updatedCase;
+
         
         for i=1:nLRU
-	    fprintf(fID, "%d\t", updatedState(i+2));
+            fprintf(fID, "%d\t", updatedCase(i+2));
         end
-	fprintf(fID, "%.3f\t%d\n", updatedState(2), updatedState(1));
+        fprintf(fID, "%.3f\t%d\n", updatedCase(2), updatedCase(1));
         
         
-        %% Sort and delete non-optimal states
         
-        % In order to determine wich states are optimal, they are sorted by
-        % cost and ...
+        %% Delete non-optimal states
         
-        nCurrentStates = nCurrentStates+nLRU-1;
+        nDeletedCases = length(currentCases(currentCases(:,2) >= updatedCase(2), 1));
         
-        [~, newIndex] = sort(currentStates(1:nCurrentStates, 1));
+        currentCases(currentCases(:,2) >= updatedCase(2), :) = [];
         
-        currentStates(1:nCurrentStates,:) = currentStates(newIndex,:);
+        nCurrentCases = nCurrentCases - nDeletedCases;
         
-        statesCleared = false;
-        currentClearState = 2;
+        %% Generation of new cases
         
-        while ~statesCleared
-            if currentStates(currentClearState,2) >= currentStates(currentClearState-1,2)
-                
-                currentStates(currentClearState,:) = [];
-                nCurrentStates = nCurrentStates - 1;
-                
-            elseif currentClearState < nCurrentStates && currentStates(currentClearState,1) == currentStates(currentClearState+1,1)
-                if  currentStates(currentClearState,2) >= currentStates(currentClearState+1,2)
-                    currentStates(currentClearState,:) = [];
-                    nCurrentStates = nCurrentStates - 1;   
-                else
-                    currentClearState = currentClearState + 1;
-                end
-            else
-                currentClearState = currentClearState + 1;
-                
-            end
+        
+        for i=1:nLRU
             
-            if currentClearState > nCurrentStates
-                statesCleared = true;
-            end
+            % 9 new states are generated, by adding one LRU of each type.
+            % Cost and EBO of each new state is computed, and the new
+            % states are added to currentStates.
+            
+            newState = updatedCase;
+            newState(2+i) = newState(2+i) + 1;
+            newState(1) = newState(3:end)*costArray;
+            newState(2) = getEBO(newState(3:end),EBOArray);
+            
+            currentCases(nCurrentCases+i,:) = newState;
         end
+        
+
+        nCurrentCases = nCurrentCases + nLRU;
+
         
     end
     
